@@ -1,0 +1,11 @@
+name: Bug report
+description: Report a problem with this togo plugin
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: What happened?, description: Description + steps to reproduce. }
+    validations: { required: true }
+  - type: textarea
+    id: env
+    attributes: { label: Environment, description: OS, Go version, env (redact secrets). }
