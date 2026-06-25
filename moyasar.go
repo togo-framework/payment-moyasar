@@ -7,6 +7,7 @@ package moyasar
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,14 +35,15 @@ func init() {
 		if base == "" {
 			base = defaultAPI
 		}
-		return &provider{key: key, base: strings.TrimRight(base, "/"), hc: &http.Client{Timeout: 20 * time.Second}}, nil
+		return &provider{key: key, base: strings.TrimRight(base, "/"), webhookSecret: os.Getenv("MOYASAR_WEBHOOK_SECRET"), hc: &http.Client{Timeout: 20 * time.Second}}, nil
 	})
 }
 
 type provider struct {
-	key  string
-	base string
-	hc   *http.Client
+	key           string
+	base          string
+	webhookSecret string
+	hc            *http.Client
 }
 
 // post sends a form-encoded request with Basic auth and decodes the JSON body.
@@ -159,11 +161,18 @@ func (p *provider) CreateSubscription(context.Context, payment.SubscriptionReque
 // HandleWebhook parses a Moyasar webhook ({type, data:{...}}).
 func (p *provider) HandleWebhook(_ context.Context, _ map[string]string, body []byte) (*payment.WebhookEvent, error) {
 	var env struct {
-		Type string         `json:"type"`
-		Data map[string]any `json:"data"`
+		Type        string         `json:"type"`
+		SecretToken string         `json:"secret_token"`
+		Data        map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, fmt.Errorf("moyasar: bad webhook body: %w", err)
+	}
+	// Moyasar puts the webhook's secret_token in the payload. When a secret is
+	// configured (MOYASAR_WEBHOOK_SECRET) verify it in constant time and reject
+	// forgeries; with no secret set we stay parse-only for dev (back-compat).
+	if p.webhookSecret != "" && subtle.ConstantTimeCompare([]byte(env.SecretToken), []byte(p.webhookSecret)) != 1 {
+		return nil, errors.New("moyasar: webhook secret_token mismatch")
 	}
 	id := ""
 	if env.Data != nil {

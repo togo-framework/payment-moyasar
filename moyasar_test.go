@@ -94,6 +94,26 @@ func TestHandleWebhook(t *testing.T) {
 	}
 }
 
+func TestHandleWebhookSecretVerification(t *testing.T) {
+	p := &provider{webhookSecret: "whsec_live"}
+	// Valid secret_token is accepted.
+	if _, err := p.HandleWebhook(context.Background(), nil, []byte(`{"type":"payment_paid","secret_token":"whsec_live","data":{"id":"pay_1"}}`)); err != nil {
+		t.Fatalf("valid secret_token should be accepted: %v", err)
+	}
+	// Wrong secret_token is rejected.
+	if _, err := p.HandleWebhook(context.Background(), nil, []byte(`{"type":"payment_paid","secret_token":"forged","data":{"id":"pay_1"}}`)); err == nil {
+		t.Error("forged secret_token should be rejected")
+	}
+	// Missing secret_token (with a secret configured) is rejected.
+	if _, err := p.HandleWebhook(context.Background(), nil, []byte(`{"type":"payment_paid","data":{"id":"pay_1"}}`)); err == nil {
+		t.Error("missing secret_token should be rejected when a secret is configured")
+	}
+	// No secret configured → parse-only (back-compat).
+	if _, err := (&provider{}).HandleWebhook(context.Background(), nil, []byte(`{"type":"payment_paid","data":{"id":"pay_1"}}`)); err != nil {
+		t.Errorf("no-secret should stay parse-only: %v", err)
+	}
+}
+
 func TestCustomerAndSubscriptionUnsupported(t *testing.T) {
 	p := &provider{}
 	if _, err := p.CreateCustomer(context.Background(), payment.Customer{}); err == nil {
